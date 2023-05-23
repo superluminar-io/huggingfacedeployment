@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
-import { HuggingfaceAiDeploymentStack } from '../lib/huggingface-ai-deployment-stack';
+import { HuggingfaceAiDeploymentStack } from '../lib/huggingfaceSagemaker/huggingfaceAiDeploymentStack';
 
 const app = new cdk.App();
 new HuggingfaceAiDeploymentStack(app, 'HuggingfaceAiDeploymentStack', {
