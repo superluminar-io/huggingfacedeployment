@@ -1,6 +1,6 @@
 import { CfnOutput, Stack, StackProps } from 'aws-cdk-lib';
 import { aws_iam as iam, aws_sagemaker as sm, aws_s3 as s3, aws_ecr as ecr } from 'aws-cdk-lib';
-// import * as apigwv2 from "@aws-cdk/aws-apigatewayv2-alpha";
+import * as apigwv2 from "@aws-cdk/aws-apigatewayv2-alpha";
 import { Construct } from 'constructs';
 import * as config from './config';
 import * as sagemaker from '@aws-cdk/aws-sagemaker-alpha';
@@ -76,54 +76,31 @@ export class HuggingfaceAiDeploymentStack extends Stack {
 
     const endpoint = new sagemaker.Endpoint(this, 'Endpoint', { endpointConfig });
 
-    // const api = new apigwv2.HttpApi(this, "api", {
-    //   corsPreflight: {
-    //     allowHeaders: ["Content-Type"],
-    //     allowMethods: [
-    //       apigwv2.CorsHttpMethod.OPTIONS,
-    //       apigwv2.CorsHttpMethod.POST,
-    //     ],
-    //     allowOrigins: ["*"],
-    //   },
-    // });
+    const api = new apigwv2.HttpApi(this, "api", {
+      corsPreflight: {
+        allowHeaders: ["Content-Type"],
+        allowMethods: [
+          apigwv2.CorsHttpMethod.OPTIONS,
+          apigwv2.CorsHttpMethod.POST,
+        ],
+        allowOrigins: ["*"],
+      },
+    });
 
-  //   const integration = new apigwv2.HttpIntegration("http://example.com", { 
-  //     integrationType: apigwv2.HttpIntegrationType.AWS_PROXY,
-  //     method: apigwv2.HttpMethod.POST,
-  //     integrationUri: endpoint.endpointArn
-  // })
+    const apiStage = new apigwv2.HttpStage(this, "api-stage", {
+      httpApi: api,
+      stageName: "prod",
+      autoDeploy: true,
+    });
 
-
-
-
-
-  //   api.addRoutes({
-  //     path: "/invocations",
-  //     methods: [apigwv2.HttpMethod.POST],
-  //     integration: 
-
-  //   });
-
-    // # add sagemaker integration
-    // endpoint_gateway.add_method(
-    //     "POST",
-    //     _apigw.AwsIntegration(
-    //         service="runtime.sagemaker",
-    //         path=f"endpoints/{endpoint.endpoint_name}/invocations",
-    //         options=_apigw.IntegrationOptions(
-    //             credentials_role=credentials_role,
-    //             integration_responses=[
-    //                 _apigw.IntegrationResponse(
-    //                     status_code="200",
-    //                 )
-    //             ],
-    //         ),
-    //     ),
-    //     method_responses=[_apigw.MethodResponse(status_code="200")],
-    // )
-
+    const integration = new apigwv2.HttpIntegration(this, "api-integration", {
+      httpApi: api,
+      integrationType: apigwv2.HttpIntegrationType.AWS_PROXY,
+      integrationUri: endpoint.endpointArn
+    });
 
     new CfnOutput(this, 'EndpointName', { value: endpoint.endpointName });
+    new CfnOutput(this, 'ApgwEndpoint', { value: api.apiEndpoint });
 
   }
 
