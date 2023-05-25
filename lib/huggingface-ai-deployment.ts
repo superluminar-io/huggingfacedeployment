@@ -1,6 +1,5 @@
 import { CfnOutput, Stack, StackProps } from 'aws-cdk-lib';
-import { aws_iam as iam, aws_sagemaker as sm, aws_s3 as s3, aws_ecr as ecr, aws_apigateway as apigw } from 'aws-cdk-lib';
-// import * as apigwv2 from "@aws-cdk/aws-apigatewayv2-alpha";
+import { aws_iam as iam, aws_s3 as s3, aws_ecr as ecr, aws_apigateway as apigw } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as config from './config';
 import * as sagemaker from '@aws-cdk/aws-sagemaker-alpha';
@@ -43,8 +42,10 @@ export class HuggingfaceAiDeploymentStack extends Stack {
 
     sagemakerRole.attachInlinePolicy(sagemakerPolicy);
 
+    const model_name = 'distilbert-base-uncased-finetuned-sst-2-english';
+
     const s3Bucket = s3.Bucket.fromBucketName(this, 'S3Bucket', 'generative-ai-model-bucket');
-    const modelData = sagemaker.ModelData.fromBucket(s3Bucket, 'distilbert-base-uncased-finetuned-sst-2-english.tar.gz');
+    const modelData = sagemaker.ModelData.fromBucket(s3Bucket, `${model_name}.tar.gz`);
 
     const currentRegion = 'eu-central-1'
 
@@ -52,13 +53,19 @@ export class HuggingfaceAiDeploymentStack extends Stack {
     const repositoryArn = `arn:aws:ecr:${currentRegion}:${config.region_dict[currentRegion]}:repository/${repositoryName}`
     const repository = ecr.Repository.fromRepositoryAttributes(this, 'HuggingFaceRepository', { repositoryArn, repositoryName });
 
-    const image = sagemaker.ContainerImage.fromEcrRepository(repository, '1.13.1-transformers4.26.0-cpu-py39-ubuntu20.04');
+    const image_tag = '1.13.1-transformers4.26.0-cpu-py39-ubuntu20.04'
+    const image = sagemaker.ContainerImage.fromEcrRepository(repository, image_tag);
 
     const model = new sagemaker.Model(this, 'PrimaryContainerModel', {
       containers: [
         {
           image: image,
           modelData: modelData,
+          environment: {
+            HF_TASK: 'text-classification',
+            MMS_DEFAULT_WORKERS_PER_MODEL: '1',
+            HF_MODEL_ID: model_name,
+          },
         }
       ],
       role: sagemakerRole
@@ -92,11 +99,12 @@ export class HuggingfaceAiDeploymentStack extends Stack {
 
     apigwRole.attachInlinePolicy(apigwPolicy);
 
-    const api = new apigw.RestApi(this, 'ApiGateway', {
-      restApiName: 'ModelApi',
-      description: 'ModelApi',
+
+
+    const api = new apigw.RestApi(this, "ApiGateway", {
       deployOptions: {
-        stageName: 'prod',
+        stageName: "prod",
+        tracingEnabled: true,
         metricsEnabled: true,
         loggingLevel: apigw.MethodLoggingLevel.INFO,
       },
@@ -105,79 +113,28 @@ export class HuggingfaceAiDeploymentStack extends Stack {
         allowMethods: apigw.Cors.ALL_METHODS,
         allowHeaders: apigw.Cors.DEFAULT_HEADERS,
       },
-
     });
 
-    const integration = new apigw.AwsIntegration({
-      service: 'runtime.sagemaker',
-      // action: 'InvokeEndpoint',
-      path: `endpoints/${endpoint.endpointName}/invocations`,
-      integrationHttpMethod: 'POST',
-      options: {
-        credentialsRole: apigwRole,
-        integrationResponses: [
-          {
-            statusCode: '200',
-          },
-        ],
-      }
-    });
+    const queue = api.root.addResource(model_name);
+    queue.addMethod(
+      "POST",
+      new apigw.AwsIntegration({
+        service: "runtime.sagemaker",
+        path: `endpoints/${endpoint.endpointName}/invocations`,
+        integrationHttpMethod: "POST",
+        options: {
+          credentialsRole: apigwRole,
+          integrationResponses: [
+            {
+              statusCode: "200",
+            },
+          ],
+        },
+      }),
+      { methodResponses: [{ statusCode: "200" }] }
+    );
 
-    api.root
-      .addMethod('POST', integration);
-
-
-
-
-    //     const integration = new AwsIntegration({
-    //       service: "SageMakerRuntime",
-    //       path: "endpoints/{endpointName}/invocations",
-    //       integrationHttpMethod: "POST",
-    //       options: {
-    //         credentialsRole: Role.fromRoleArn(
-    //           this,
-    //           "Execution role",
-    //           "<arn>"
-    //         )
-    //       }
-    //     });
-
-
-    // const postMethod = api.root
-    //       .addResource(this.node.tryGetContext("serviceVersion"))
-    //       .addResource("endpoints")
-    //       .addResource("{endpointName}")
-    //       .addResource("inferences")
-    //       .addMethod("POST", integration);
-
-
-
-    // const api = new apigwv2.HttpApi(this, "api", {
-    //   corsPreflight: {
-    //     allowHeaders: ["Content-Type"],
-    //     allowMethods: [
-    //       apigwv2.CorsHttpMethod.OPTIONS,
-    //       apigwv2.CorsHttpMethod.POST,
-    //     ],
-    //     allowOrigins: ["*"],
-    //   },
-    // });
-
-    //     new apigwv2.HttpStage(this, "api-stage", {
-    //       httpApi: api,
-    //       stageName: "prod",
-    //       autoDeploy: true,
-    //     });
-
-    // new apigwv2.HttpIntegration(this, "api-integration", {
-    //   httpApi: api,
-    //   integrationType: apigwv2.HttpIntegrationType.AWS_PROXY,
-    //   integrationUri: `endpoints/${endpoint.endpointName}/invocations` //endpoint.endpointArn
-    // });
-
-    new CfnOutput(this, 'EndpointName', { value: endpoint.endpointName });
-    new CfnOutput(this, 'ApgwEndpoint', { value: api.url });
-
+    new CfnOutput(this, 'ApgwEndpoint', { value: `${api.url}/${model_name}` });
   }
 
 };
