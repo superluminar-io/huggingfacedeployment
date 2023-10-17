@@ -17,10 +17,6 @@ export class HuggingfaceAiDeploymentStack extends Stack {
       statements: [new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: [
-          "ecr:GetDownloadUrlForLayer",
-          "ecr:BatchGetImage",
-          "ecr:BatchCheckLayerAvailability",
-          "ecr:GetAuthorizationToken",
           "cloudwatch:PutMetricData",
           "cloudwatch:GetMetricData",
           "cloudwatch:GetMetricStatistics",
@@ -30,11 +26,6 @@ export class HuggingfaceAiDeploymentStack extends Stack {
           "logs:DescribeLogStreams",
           "logs:PutLogEvents",
           "logs:GetLogEvents",
-          "s3:CreateBucket",
-          "s3:ListBucket",
-          "s3:GetBucketLocation",
-          "s3:GetObject",
-          "s3:PutObject",
         ],
         resources: ['*'],
       })],
@@ -44,14 +35,17 @@ export class HuggingfaceAiDeploymentStack extends Stack {
 
     const model_name = 'distilbert-base-uncased-finetuned-sst-2-english';
 
-    const s3Bucket = s3.Bucket.fromBucketName(this, 'S3Bucket', 'generative-ai-model-bucket');
+    const s3Bucket = s3.Bucket.fromBucketName(this, 'S3Bucket', 'generative-ai-model-bucket-123874692351');
     const modelData = sagemaker.ModelData.fromBucket(s3Bucket, `${model_name}.tar.gz`);
+    s3Bucket.grantReadWrite(sagemakerRole)
 
     const currentRegion = 'eu-central-1'
 
     const repositoryName = 'huggingface-pytorch-inference'
     const repositoryArn = `arn:aws:ecr:${currentRegion}:${config.region_dict[currentRegion]}:repository/${repositoryName}`
     const repository = ecr.Repository.fromRepositoryAttributes(this, 'HuggingFaceRepository', { repositoryArn, repositoryName });
+    repository.grantPullPush(sagemakerRole)
+
 
     const image_tag = '1.13.1-transformers4.26.0-cpu-py39-ubuntu20.04'
     const image = sagemaker.ContainerImage.fromEcrRepository(repository, image_tag);
@@ -99,14 +93,11 @@ export class HuggingfaceAiDeploymentStack extends Stack {
 
     apigwRole.attachInlinePolicy(apigwPolicy);
 
-
-
     const api = new apigw.RestApi(this, "ApiGateway", {
       deployOptions: {
         stageName: "prod",
         tracingEnabled: true,
         metricsEnabled: true,
-        loggingLevel: apigw.MethodLoggingLevel.INFO,
       },
       defaultCorsPreflightOptions: {
         allowOrigins: apigw.Cors.ALL_ORIGINS,
@@ -114,7 +105,7 @@ export class HuggingfaceAiDeploymentStack extends Stack {
         allowHeaders: apigw.Cors.DEFAULT_HEADERS,
       },
     });
-
+    
     const queue = api.root.addResource(model_name);
     queue.addMethod(
       "POST",
