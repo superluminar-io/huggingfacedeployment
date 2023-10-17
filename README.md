@@ -1,4 +1,4 @@
-# Welcome to your CDK TypeScript project
+# SageMaker CDK Demo 
 
 This project is a demo implementation of a Text Classification AI using SageMaker in CDK.
 

@@ -1,4 +1,4 @@
-import { CfnOutput, Stack, StackProps } from 'aws-cdk-lib';
+import { CfnOutput, Stack, StackProps, RemovalPolicy, aws_s3_deployment as s3deploy, aws_logs as logs } from 'aws-cdk-lib';
 import { aws_iam as iam, aws_s3 as s3, aws_ecr as ecr, aws_apigateway as apigw } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as config from './config';
@@ -17,15 +17,7 @@ export class HuggingfaceAiDeploymentStack extends Stack {
       statements: [new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: [
-          "cloudwatch:PutMetricData",
-          "cloudwatch:GetMetricData",
-          "cloudwatch:GetMetricStatistics",
-          "cloudwatch:ListMetrics",
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:DescribeLogStreams",
-          "logs:PutLogEvents",
-          "logs:GetLogEvents",
+          "cloudwatch:*",
         ],
         resources: ['*'],
       })],
@@ -35,7 +27,16 @@ export class HuggingfaceAiDeploymentStack extends Stack {
 
     const model_name = 'distilbert-base-uncased-finetuned-sst-2-english';
 
-    const s3Bucket = s3.Bucket.fromBucketName(this, 'S3Bucket', 'generative-ai-model-bucket-123874692351');
+    const s3Bucket = new s3.Bucket(this, 'ModelBucket', {
+      autoDeleteObjects: true,
+      removalPolicy: RemovalPolicy.DESTROY,
+      bucketName: "generative-ai-bucket-12051082521"
+    });
+    new s3deploy.BucketDeployment(this, 'DeployModel', {
+      sources: [s3deploy.Source.asset('./modeldata')],
+      destinationBucket: s3Bucket,
+    });
+
     const modelData = sagemaker.ModelData.fromBucket(s3Bucket, `${model_name}.tar.gz`);
     s3Bucket.grantReadWrite(sagemakerRole)
 
@@ -64,6 +65,8 @@ export class HuggingfaceAiDeploymentStack extends Stack {
       ],
       role: sagemakerRole
     });
+
+    model.node.addDependency(s3Bucket);
 
     const endpointConfig = new sagemaker.EndpointConfig(this, 'EndpointConfig', {
       instanceProductionVariants: [
@@ -126,6 +129,10 @@ export class HuggingfaceAiDeploymentStack extends Stack {
     );
 
     new CfnOutput(this, 'ApgwEndpoint', { value: `${api.url}/${model_name}` });
-  }
+    
+    const sageMakerLogGroup = new logs.LogGroup(this, 'SageMakerLogGroup');
+    sageMakerLogGroup.grantWrite(new iam.ServicePrincipal("sagemaker.amazonaws.com"));
+
+  };
 
 };
