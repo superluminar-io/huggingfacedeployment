@@ -42,8 +42,6 @@ export class HuggingfaceAiDeploymentStack extends Stack {
     const modelData = sagemaker.ModelData.fromBucket(s3Bucket, `${model_name}.tar.gz`);
     s3Bucket.grantReadWrite(sagemakerRole)
 
-    const currentRegion = Stack.of(this).region;
-
     const repositoryName = 'huggingface-pytorch-inference'
     const repositoryArn = `arn:aws:ecr:${config.huggingfaceAccountInfo.region}:${config.huggingfaceAccountInfo.account}:repository/${repositoryName}`
     const repository = ecr.Repository.fromRepositoryAttributes(this, 'HuggingFaceRepository', { repositoryArn, repositoryName });
