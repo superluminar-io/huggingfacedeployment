@@ -1,14 +1,19 @@
-# Welcome to your CDK TypeScript project
+# SageMaker CDK Demo 
 
-This is a blank project for CDK development with TypeScript.
+This project is a demo implementation of a Text Classification AI using SageMaker in CDK.
 
-The `cdk.json` file tells the CDK Toolkit how to execute your app.
+## Architecture
 
-## Useful commands
+This implementation uses an API Gateway which sends requests to a SageMaker Endpoint, that forwards them to the model. The model itself is stored in an S3 Bucket and its image is contained in an ECR container.
+![architecture](images/architecture.png)
 
-* `npm run build`   compile typescript to js
-* `npm run watch`   watch for changes and compile
-* `npm run test`    perform the jest unit tests
-* `cdk deploy`      deploy this stack to your default AWS account/region
-* `cdk diff`        compare deployed stack with current state
-* `cdk synth`       emits the synthesized CloudFormation template
+## Deploy
+Before this model can be deployed, an S3 bucket must be created that contains the [files of the model](https://huggingface.co/distilbert-base-uncased-finetuned-sst-2-english/tree/main). After that you can simply deploy the model with the command ```cdk deploy```
+
+The model can be testet using curl
+```batch
+curl --request POST \
+     --url {apigw-url} \
+     --header 'Content-Type: application/json' \
+     --data '{"inputs": "Hugging Face, the winner of VentureBeat's Innovation in Natural Language Process/Understanding Award for 2021, is looking to level the playing field." }'
+```

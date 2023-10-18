@@ -1,4 +1,4 @@
-import { CfnOutput, Stack, StackProps } from 'aws-cdk-lib';
+import { CfnOutput, Stack, StackProps, RemovalPolicy, aws_s3_deployment as s3deploy, aws_logs as logs } from 'aws-cdk-lib';
 import { aws_iam as iam, aws_s3 as s3, aws_ecr as ecr, aws_apigateway as apigw } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as config from './config';
@@ -17,24 +17,10 @@ export class HuggingfaceAiDeploymentStack extends Stack {
       statements: [new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: [
-          "ecr:GetDownloadUrlForLayer",
-          "ecr:BatchGetImage",
-          "ecr:BatchCheckLayerAvailability",
-          "ecr:GetAuthorizationToken",
           "cloudwatch:PutMetricData",
           "cloudwatch:GetMetricData",
           "cloudwatch:GetMetricStatistics",
           "cloudwatch:ListMetrics",
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:DescribeLogStreams",
-          "logs:PutLogEvents",
-          "logs:GetLogEvents",
-          "s3:CreateBucket",
-          "s3:ListBucket",
-          "s3:GetBucketLocation",
-          "s3:GetObject",
-          "s3:PutObject",
         ],
         resources: ['*'],
       })],
@@ -44,14 +30,25 @@ export class HuggingfaceAiDeploymentStack extends Stack {
 
     const model_name = 'distilbert-base-uncased-finetuned-sst-2-english';
 
-    const s3Bucket = s3.Bucket.fromBucketName(this, 'S3Bucket', 'generative-ai-model-bucket');
-    const modelData = sagemaker.ModelData.fromBucket(s3Bucket, `${model_name}.tar.gz`);
+    const s3Bucket = new s3.Bucket(this, 'ModelBucket', {
+      autoDeleteObjects: true,
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+    new s3deploy.BucketDeployment(this, 'DeployModel', {
+      sources: [s3deploy.Source.asset('./modeldata')],
+      destinationBucket: s3Bucket,
+    });
 
-    const currentRegion = 'eu-central-1'
+    const modelData = sagemaker.ModelData.fromBucket(s3Bucket, `${model_name}.tar.gz`);
+    s3Bucket.grantReadWrite(sagemakerRole)
+
+    const currentRegion = Stack.of(this).region;
 
     const repositoryName = 'huggingface-pytorch-inference'
-    const repositoryArn = `arn:aws:ecr:${currentRegion}:${config.region_dict[currentRegion]}:repository/${repositoryName}`
+    const repositoryArn = `arn:aws:ecr:${currentRegion}:${config.huggingfaceAccountNumber}:repository/${repositoryName}`
     const repository = ecr.Repository.fromRepositoryAttributes(this, 'HuggingFaceRepository', { repositoryArn, repositoryName });
+    repository.grantRead(sagemakerRole)
+
 
     const image_tag = '1.13.1-transformers4.26.0-cpu-py39-ubuntu20.04'
     const image = sagemaker.ContainerImage.fromEcrRepository(repository, image_tag);
@@ -70,6 +67,8 @@ export class HuggingfaceAiDeploymentStack extends Stack {
       ],
       role: sagemakerRole
     });
+
+    model.node.addDependency(s3Bucket);
 
     const endpointConfig = new sagemaker.EndpointConfig(this, 'EndpointConfig', {
       instanceProductionVariants: [
@@ -99,18 +98,15 @@ export class HuggingfaceAiDeploymentStack extends Stack {
 
     apigwRole.attachInlinePolicy(apigwPolicy);
 
-
-
     const api = new apigw.RestApi(this, "ApiGateway", {
       deployOptions: {
         stageName: "prod",
         tracingEnabled: true,
         metricsEnabled: true,
-        loggingLevel: apigw.MethodLoggingLevel.INFO,
       },
       defaultCorsPreflightOptions: {
         allowOrigins: apigw.Cors.ALL_ORIGINS,
-        allowMethods: apigw.Cors.ALL_METHODS,
+        allowMethods: [ 'POST' ],
         allowHeaders: apigw.Cors.DEFAULT_HEADERS,
       },
     });
@@ -135,6 +131,11 @@ export class HuggingfaceAiDeploymentStack extends Stack {
     );
 
     new CfnOutput(this, 'ApgwEndpoint', { value: `${api.url}/${model_name}` });
-  }
+
+    const sageMakerLogGroup = new logs.LogGroup(this, 'SageMakerLogGroup', {
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+    sageMakerLogGroup.grantWrite(new iam.ServicePrincipal("sagemaker.amazonaws.com"));
+  };
 
 };
