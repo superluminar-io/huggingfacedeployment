@@ -45,7 +45,7 @@ export class HuggingfaceAiDeploymentStack extends Stack {
     const currentRegion = Stack.of(this).region;
 
     const repositoryName = 'huggingface-pytorch-inference'
-    const repositoryArn = `arn:aws:ecr:${currentRegion}:${config.regionDict[currentRegion]}:repository/${repositoryName}`
+    const repositoryArn = `arn:aws:ecr:${currentRegion}:${config.huggingfaceAccountNumber}:repository/${repositoryName}`
     const repository = ecr.Repository.fromRepositoryAttributes(this, 'HuggingFaceRepository', { repositoryArn, repositoryName });
     repository.grantRead(sagemakerRole)
 
@@ -132,7 +132,9 @@ export class HuggingfaceAiDeploymentStack extends Stack {
 
     new CfnOutput(this, 'ApgwEndpoint', { value: `${api.url}/${model_name}` });
 
-    const sageMakerLogGroup = new logs.LogGroup(this, 'SageMakerLogGroup');
+    const sageMakerLogGroup = new logs.LogGroup(this, 'SageMakerLogGroup', {
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
     sageMakerLogGroup.grantWrite(new iam.ServicePrincipal("sagemaker.amazonaws.com"));
   };
 
