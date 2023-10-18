@@ -17,7 +17,10 @@ export class HuggingfaceAiDeploymentStack extends Stack {
       statements: [new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: [
-          "cloudwatch:*",
+          "cloudwatch:PutMetricData",
+          "cloudwatch:GetMetricData",
+          "cloudwatch:GetMetricStatistics",
+          "cloudwatch:ListMetrics",
         ],
         resources: ['*'],
       })],
@@ -30,7 +33,6 @@ export class HuggingfaceAiDeploymentStack extends Stack {
     const s3Bucket = new s3.Bucket(this, 'ModelBucket', {
       autoDeleteObjects: true,
       removalPolicy: RemovalPolicy.DESTROY,
-      bucketName: "generative-ai-bucket-12051082521"
     });
     new s3deploy.BucketDeployment(this, 'DeployModel', {
       sources: [s3deploy.Source.asset('./modeldata')],
@@ -40,12 +42,12 @@ export class HuggingfaceAiDeploymentStack extends Stack {
     const modelData = sagemaker.ModelData.fromBucket(s3Bucket, `${model_name}.tar.gz`);
     s3Bucket.grantReadWrite(sagemakerRole)
 
-    const currentRegion = 'eu-central-1'
+    const currentRegion = Stack.of(this).region;
 
     const repositoryName = 'huggingface-pytorch-inference'
-    const repositoryArn = `arn:aws:ecr:${currentRegion}:${config.region_dict[currentRegion]}:repository/${repositoryName}`
+    const repositoryArn = `arn:aws:ecr:${currentRegion}:${config.regionDict[currentRegion]}:repository/${repositoryName}`
     const repository = ecr.Repository.fromRepositoryAttributes(this, 'HuggingFaceRepository', { repositoryArn, repositoryName });
-    repository.grantPullPush(sagemakerRole)
+    repository.grantRead(sagemakerRole)
 
 
     const image_tag = '1.13.1-transformers4.26.0-cpu-py39-ubuntu20.04'
@@ -104,11 +106,11 @@ export class HuggingfaceAiDeploymentStack extends Stack {
       },
       defaultCorsPreflightOptions: {
         allowOrigins: apigw.Cors.ALL_ORIGINS,
-        allowMethods: apigw.Cors.ALL_METHODS,
+        allowMethods: [ 'POST' ],
         allowHeaders: apigw.Cors.DEFAULT_HEADERS,
       },
     });
-    
+
     const queue = api.root.addResource(model_name);
     queue.addMethod(
       "POST",
@@ -129,10 +131,9 @@ export class HuggingfaceAiDeploymentStack extends Stack {
     );
 
     new CfnOutput(this, 'ApgwEndpoint', { value: `${api.url}/${model_name}` });
-    
+
     const sageMakerLogGroup = new logs.LogGroup(this, 'SageMakerLogGroup');
     sageMakerLogGroup.grantWrite(new iam.ServicePrincipal("sagemaker.amazonaws.com"));
-
   };
 
 };
