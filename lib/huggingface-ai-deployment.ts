@@ -45,7 +45,7 @@ export class HuggingfaceAiDeploymentStack extends Stack {
     const currentRegion = Stack.of(this).region;
 
     const repositoryName = 'huggingface-pytorch-inference'
-    const repositoryArn = `arn:aws:ecr:${currentRegion}:${config.huggingfaceAccountNumber}:repository/${repositoryName}`
+    const repositoryArn = `arn:aws:ecr:${config.huggingfaceAccountInfo.region}:${config.huggingfaceAccountInfo.account}:repository/${repositoryName}`
     const repository = ecr.Repository.fromRepositoryAttributes(this, 'HuggingFaceRepository', { repositoryArn, repositoryName });
     repository.grantRead(sagemakerRole)
 
