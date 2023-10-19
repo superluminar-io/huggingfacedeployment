@@ -25,33 +25,29 @@ export class HuggingfaceAiDeploymentStack extends Stack {
         resources: ['*'],
       })],
     });
-
     sagemakerRole.attachInlinePolicy(sagemakerPolicy);
-
-    const model_name = 'distilbert-base-uncased-finetuned-sst-2-english';
 
     const s3Bucket = new s3.Bucket(this, 'ModelBucket', {
       autoDeleteObjects: true,
       removalPolicy: RemovalPolicy.DESTROY,
     });
+    s3Bucket.grantReadWrite(sagemakerRole)
+
     new s3deploy.BucketDeployment(this, 'DeployModel', {
       sources: [s3deploy.Source.asset('./modeldata')],
       destinationBucket: s3Bucket,
     });
 
-    const modelData = sagemaker.ModelData.fromBucket(s3Bucket, `${model_name}.tar.gz`);
-    s3Bucket.grantReadWrite(sagemakerRole)
-
-    const currentRegion = Stack.of(this).region;
-
     const repositoryName = 'huggingface-pytorch-inference'
-    const repositoryArn = `arn:aws:ecr:${currentRegion}:${config.huggingfaceAccountNumber}:repository/${repositoryName}`
+    const repositoryArn = `arn:aws:ecr:${config.huggingfaceAccountInfo.region}:${config.huggingfaceAccountInfo.account}:repository/${repositoryName}`
     const repository = ecr.Repository.fromRepositoryAttributes(this, 'HuggingFaceRepository', { repositoryArn, repositoryName });
     repository.grantRead(sagemakerRole)
 
-
     const image_tag = '1.13.1-transformers4.26.0-cpu-py39-ubuntu20.04'
     const image = sagemaker.ContainerImage.fromEcrRepository(repository, image_tag);
+
+    const model_name = 'distilbert-base-uncased-finetuned-sst-2-english';
+    const modelData = sagemaker.ModelData.fromBucket(s3Bucket, `${model_name}.tar.gz`);
 
     const model = new sagemaker.Model(this, 'PrimaryContainerModel', {
       containers: [
@@ -67,7 +63,6 @@ export class HuggingfaceAiDeploymentStack extends Stack {
       ],
       role: sagemakerRole
     });
-
     model.node.addDependency(s3Bucket);
 
     const endpointConfig = new sagemaker.EndpointConfig(this, 'EndpointConfig', {
@@ -95,7 +90,6 @@ export class HuggingfaceAiDeploymentStack extends Stack {
         resources: [endpoint.endpointArn]
       })],
     });
-
     apigwRole.attachInlinePolicy(apigwPolicy);
 
     const api = new apigw.RestApi(this, "ApiGateway", {
