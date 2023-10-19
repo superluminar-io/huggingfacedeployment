@@ -33,7 +33,7 @@ export class HuggingfaceAiDeploymentStack extends Stack {
     });
     s3Bucket.grantReadWrite(sagemakerRole)
 
-    new s3deploy.BucketDeployment(this, 'DeployModel', {
+    const bucketDeployment = new s3deploy.BucketDeployment(this, 'DeployModel', {
       sources: [s3deploy.Source.asset('./modeldata')],
       destinationBucket: s3Bucket,
     });
@@ -63,7 +63,7 @@ export class HuggingfaceAiDeploymentStack extends Stack {
       ],
       role: sagemakerRole
     });
-    model.node.addDependency(s3Bucket);
+    model.node.addDependency(bucketDeployment);
 
     const endpointConfig = new sagemaker.EndpointConfig(this, 'EndpointConfig', {
       instanceProductionVariants: [
