@@ -1,5 +1,17 @@
-import { CfnOutput, Stack, StackProps, RemovalPolicy, aws_s3_deployment as s3deploy, aws_logs as logs } from 'aws-cdk-lib';
-import { aws_iam as iam, aws_s3 as s3, aws_ecr as ecr, aws_apigateway as apigw } from 'aws-cdk-lib';
+import { 
+  CfnOutput,
+  Stack,
+  StackProps,
+  RemovalPolicy
+} from 'aws-cdk-lib';
+import { 
+  aws_iam as iam, 
+  aws_s3 as s3, 
+  aws_s3_deployment as s3deploy,
+  aws_ecr as ecr, 
+  aws_apigateway as apigw,
+  aws_logs as logs
+} from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as config from './config';
 import * as sagemaker from '@aws-cdk/aws-sagemaker-alpha';
