@@ -77,6 +77,8 @@ export class HuggingfaceAiDeploymentStack extends Stack {
     });
     model.node.addDependency(bucketDeployment);
 
+    model.node.addDependency(s3Bucket);
+
     const endpointConfig = new sagemaker.EndpointConfig(this, 'EndpointConfig', {
       instanceProductionVariants: [
         {
