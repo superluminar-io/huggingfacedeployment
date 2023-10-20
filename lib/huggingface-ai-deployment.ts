@@ -1,5 +1,17 @@
-import { CfnOutput, Stack, StackProps, RemovalPolicy, aws_s3_deployment as s3deploy, aws_logs as logs } from 'aws-cdk-lib';
-import { aws_iam as iam, aws_s3 as s3, aws_ecr as ecr, aws_apigateway as apigw } from 'aws-cdk-lib';
+import { 
+  CfnOutput,
+  Stack,
+  StackProps,
+  RemovalPolicy
+} from 'aws-cdk-lib';
+import { 
+  aws_iam as iam, 
+  aws_s3 as s3, 
+  aws_s3_deployment as s3deploy,
+  aws_ecr as ecr, 
+  aws_apigateway as apigw,
+  aws_logs as logs
+} from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as config from './config';
 import * as sagemaker from '@aws-cdk/aws-sagemaker-alpha';
@@ -25,31 +37,29 @@ export class HuggingfaceAiDeploymentStack extends Stack {
         resources: ['*'],
       })],
     });
-
     sagemakerRole.attachInlinePolicy(sagemakerPolicy);
-
-    const model_name = 'distilbert-base-uncased-finetuned-sst-2-english';
 
     const s3Bucket = new s3.Bucket(this, 'ModelBucket', {
       autoDeleteObjects: true,
       removalPolicy: RemovalPolicy.DESTROY,
     });
-    new s3deploy.BucketDeployment(this, 'DeployModel', {
+    s3Bucket.grantReadWrite(sagemakerRole)
+
+    const bucketDeployment = new s3deploy.BucketDeployment(this, 'DeployModel', {
       sources: [s3deploy.Source.asset('./modeldata')],
       destinationBucket: s3Bucket,
     });
-
-    const modelData = sagemaker.ModelData.fromBucket(s3Bucket, `${model_name}.tar.gz`);
-    s3Bucket.grantReadWrite(sagemakerRole)
 
     const repositoryName = 'huggingface-pytorch-inference'
     const repositoryArn = `arn:aws:ecr:${config.huggingfaceAccountInfo.region}:${config.huggingfaceAccountInfo.account}:repository/${repositoryName}`
     const repository = ecr.Repository.fromRepositoryAttributes(this, 'HuggingFaceRepository', { repositoryArn, repositoryName });
     repository.grantRead(sagemakerRole)
 
-
     const image_tag = '1.13.1-transformers4.26.0-cpu-py39-ubuntu20.04'
     const image = sagemaker.ContainerImage.fromEcrRepository(repository, image_tag);
+
+    const model_name = 'distilbert-base-uncased-finetuned-sst-2-english';
+    const modelData = sagemaker.ModelData.fromBucket(s3Bucket, `${model_name}.tar.gz`);
 
     const model = new sagemaker.Model(this, 'PrimaryContainerModel', {
       containers: [
@@ -65,6 +75,7 @@ export class HuggingfaceAiDeploymentStack extends Stack {
       ],
       role: sagemakerRole
     });
+    model.node.addDependency(bucketDeployment);
 
     model.node.addDependency(s3Bucket);
 
@@ -93,7 +104,6 @@ export class HuggingfaceAiDeploymentStack extends Stack {
         resources: [endpoint.endpointArn]
       })],
     });
-
     apigwRole.attachInlinePolicy(apigwPolicy);
 
     const api = new apigw.RestApi(this, "ApiGateway", {
